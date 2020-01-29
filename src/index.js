@@ -25,6 +25,7 @@ export default class UBXPacketParser extends Transform {
    * @param {protocolMessage} chunk
    * @private
    */
+  // eslint-disable-next-line no-underscore-dangle
   _transform(chunk, encoding, cb) {
     const packetType = `${chunk.messageClass}_${chunk.messageId}`;
     const packetTypeString = packetTypesInversed[packetType];
@@ -50,8 +51,18 @@ export default class UBXPacketParser extends Transform {
         result = navFunctions.pvt(chunk);
         break;
 
+      case packetTypes['NAV-HPPOSLLH']:
+        result = navFunctions.hpposllh(chunk);
+        break;
+
+      case packetTypes['NAV-RELPOSNED']:
+        result = navFunctions.relposned(chunk);
+        break;
+
       default:
         debug(`Unknown packet type: "${packetTypeString}" "${packetType}"`);
+        // emit an event about the unhandled packet
+        this.emit('unknown_packet', { packetType, packetTypeString });
         cb();
 
         return;
