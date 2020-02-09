@@ -62,7 +62,7 @@ export default class UBXPacketParser extends Transform {
       default:
         debug(`Unknown packet type: "${packetTypeString}" "${packetType}"`);
         // emit an event about the unhandled packet
-        this.emit('unknown_packet', { packetType, packetTypeString });
+        this.emit('unknown_packet', { packet: chunk, packetType, packetTypeString });
         cb();
 
         return;
@@ -71,5 +71,11 @@ export default class UBXPacketParser extends Transform {
     this.push(result);
 
     cb();
+  }
+
+  static getPacketName(packetClass, packetId) {
+    const packetType = `${packetClass}_${packetId}`;
+    const packetTypeString = packetTypesInversed[packetType];
+    return packetTypeString || 'UNKNOWN';
   }
 }
