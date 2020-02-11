@@ -8,50 +8,72 @@ import { gnssIdentifiersInversed } from './ubx';
  * @property {Buffer} payload
  */
 
+const weekSeconds = (60 * 60 * 24 * 7);
+
 function bitToBool(byte, bit) {
   return ((byte >> bit) % 2 !== 0);
 }
 
-function iTowToDate(itow) {
+function itowToDate(itow) {
   const gpsEpochSeconds = 315964800; // delta between unix epoch, January 1, 1970, UTC, (used by Date()) and gps baseline at January 6, 1980, UTC
-  const weekSeconds = (60 * 60 * 24 * 7);
   const week = Math.floor(((new Date()).getTime() - (new Date('1980-01-06')).getTime()) / 1000 / 60 / 60 / 24 / 7); //  calculate current week number since gps baseline using local time
-  // TODO: this is problematic, because local time might not be in sync with true time, so at week change points local we will have discontinuity.
-  // either use NAV-PVT with time coming from GNSS alone or calc local Tow and try to match to next or prev local week based on match with itow.
+  // TODO: this is problematic, because local time (where parsing happens) might not be in sync with true time, so at week change points local we will have discontinuity.
+  // either use NAV-PVT with UTC time coming from GNSS alone or calc local Tow and week and try to match to next or prev local week based on match with receiver itow (i.e. which end it is close to).
+  // additionally, if doing the calculation ourselves, there will be inaccuracies due to leap seconds. See Integration Manual section "3.7 Clocks and time".
+  // best solution for relative deltas is to subtract itow while taking care of overflow.
+  // best solution for UTC absolute values is to wait for receiver to properly sync with time. Use flags and fields in NAV-PVT.
 
   return new Date((gpsEpochSeconds + (weekSeconds * week) + (itow / 1000)) * 1000);
+}
+
+// returns difference (in ms) between two itow values
+// handles overflow
+// can't correctly diff two values more than one week apart
+function itowDiff(itowStart, itowEnd) {
+  if (itowEnd < itowStart) { // if overflow
+    return itowEnd + weekSeconds * 1000 - itowStart;
+  }
+  return itowEnd - itowStart; // simple case
 }
 
 /**
  * @param {protocolMessage} packet
  */
 function status(packet) {
-  const gpsFix = {
-    raw: packet.payload.readUInt8(4),
+  const gpsFixRaw = {
+    value: packet.payload.readUInt8(4),
     string: '',
   };
 
-  switch (gpsFix.raw) {
+  let gpsFix = '';
+  switch (gpsFixRaw.value) {
     case 0x00:
-      gpsFix.string = 'no fix';
+      gpsFixRaw.string = 'no fix';
+      gpsFix = 'no-fix';
       break;
     case 0x01:
-      gpsFix.string = 'dead reckoning only';
+      gpsFixRaw.string = 'dead reckoning only';
+      gpsFix = 'dead-reckoning';
       break;
     case 0x02:
-      gpsFix.string = '2D-fix';
+      gpsFixRaw.string = '2D-fix';
+      gpsFix = '2d-fix';
       break;
     case 0x03:
-      gpsFix.string = '3D-fix';
+      gpsFixRaw.string = '3D-fix';
+      gpsFix = '3d-fix';
       break;
     case 0x04:
-      gpsFix.string = 'GPS + dead reckoning combined';
+      gpsFixRaw.string = 'GPS + dead reckoning combined';
+      gpsFix = 'gps+dead-reckoning';
       break;
     case 0x05:
-      gpsFix.string = 'Time only fix';
+      gpsFixRaw.string = 'Time only fix';
+      gpsFix = 'time-only';
       break;
     default:
-      gpsFix.string = 'reserved';
+      gpsFixRaw.string = 'reserved';
+      gpsFix = 'reserved';
       break;
   }
 
@@ -60,72 +82,67 @@ function status(packet) {
     diffSoln: bitToBool(packet.payload.readUInt8(5), 1),
     wknSet: bitToBool(packet.payload.readUInt8(5), 2),
     towSet: bitToBool(packet.payload.readUInt8(5), 3),
+    psmStateRaw: {},
+    spoofDetStateRaw: {},
   };
 
-  const flags2 = {
-    psmState: {
-      raw: 0,
-      string: '',
-    },
-    spoofDetState: {
-      raw: 0,
-      string: '',
-    },
-  };
-
-  switch (`${(packet.payload.readUInt8(7) >> 1) % 2}${(packet.payload.readUInt8(7) >> 0) % 2}`) {
+  // Power Save Mode state
+  flags.psmStateRaw.bits = `${(packet.payload.readUInt8(7) >> 1) % 2}${(packet.payload.readUInt8(7) >> 0) % 2}`;
+  switch (flags.psmStateRaw.bits) {
     case '00':
-      flags2.psmState.raw = 0;
-      flags2.psmState.string = 'ACQUISITION';
+      flags.psmState = 'acquisition';
+      flags.psmStateRaw.string = 'ACQUISITION';
       break;
     case '01':
-      flags2.psmState.raw = 1;
-      flags2.psmState.string = 'TRACKING';
+      flags.psmState = 'tracking';
+      flags.psmStateRaw.string = 'TRACKING';
       break;
     case '10':
-      flags2.psmState.raw = 2;
-      flags2.psmState.string = 'POWER OPTIMIZED TRACKING';
+      flags.psmState = 'power-optimized-tracking';
+      flags.psmStateRaw.string = 'POWER OPTIMIZED TRACKING';
       break;
     case '11':
-      flags2.psmState.raw = 3;
-      flags2.psmState.string = 'INACTIVE';
+      flags.psmState = 'inactive';
+      flags.psmStateRaw.string = 'INACTIVE';
       break;
   }
 
-  switch (`${(packet.payload.readUInt8(7) >> 4) % 2}${(packet.payload.readUInt8(7) >> 3) % 2}`) {
+  // Spoofing detection state
+  flags.spoofDetStateRaw.bits = `${(packet.payload.readUInt8(7) >> 4) % 2}${(packet.payload.readUInt8(7) >> 3) % 2}`;
+  switch (flags.spoofDetStateRaw.bits) {
     case '00':
-      flags2.spoofDetState.raw = 0;
-      flags2.spoofDetState.string = 'Unknown or deactivated';
+      flags.spoofDetState = 'unknown';
+      flags.spoofDetStateRaw.string = 'Unknown or deactivated';
       break;
     case '01':
-      flags2.spoofDetState.raw = 1;
-      flags2.spoofDetState.string = 'No spoofing indicated';
+      flags.spoofDetState = 'no-spoofing';
+      flags.spoofDetStateRaw.string = 'No spoofing indicated';
       break;
     case '10':
-      flags2.spoofDetState.raw = 2;
-      flags2.spoofDetState.string = 'Spoofing indicated';
+      flags.spoofDetState = 'spoofing';
+      flags.spoofDetStateRaw.string = 'Spoofing indicated';
       break;
     case '11':
-      flags2.spoofDetState.raw = 3;
-      flags2.spoofDetState.string = 'Multiple spoofing indications';
+      flags.spoofDetState = 'multiple-spoofing';
+      flags.spoofDetStateRaw.string = 'Multiple spoofing indications';
       break;
   }
 
   const fixStat = {
     diffCorr: bitToBool(packet.payload.readUInt8(6), 0),
-    mapMatching: `${(packet.payload.readUInt8(6) >> 7) % 2}${(packet.payload.readUInt8(6) >> 6) % 2}`,
+    // mapMatching: `${(packet.payload.readUInt8(6) >> 7) % 2}${(packet.payload.readUInt8(6) >> 6) % 2}`, // add parsing of bit options if going to expose this field
   };
 
   return {
     type: 'NAV-STATUS',
     iTOW: packet.payload.readUInt32LE(0), // GPS time of week of the navigation epoch. [ms]
-    timeStamp: iTowToDate(packet.payload.readUInt32LE(0)),
+    timeStamp: itowToDate(packet.payload.readUInt32LE(0)),
     data: {
       iTOW: packet.payload.readUInt32LE(0),
       gpsFix,
+      gpsFixRaw,
       flags,
       fixStat,
-      flags2,
       ttff: packet.payload.readUInt32LE(8), // Time to first fix (millisecond time tag) [ms]
       msss: packet.payload.readUInt32LE(12), // Milliseconds since Startup / Reset [ms]
     },
@@ -139,7 +156,7 @@ function posllh(packet) {
   return {
     type: 'NAV-POSLLH',
     iTOW: packet.payload.readUInt32LE(0),
-    timeStamp: iTowToDate(packet.payload.readUInt32LE(0)),
+    timeStamp: itowToDate(packet.payload.readUInt32LE(0)),
     data: {
       iTOW: packet.payload.readUInt32LE(0),
       lon: (packet.payload.readInt32LE(4) * 1e-7), // [deg]
@@ -159,7 +176,7 @@ function velned(packet) {
   return {
     type: 'NAV-VELNED',
     iTOW: packet.payload.readUInt32LE(0),
-    timeStamp: iTowToDate(packet.payload.readUInt32LE(0)),
+    timeStamp: itowToDate(packet.payload.readUInt32LE(0)),
     data: {
       iTOW: packet.payload.readUInt32LE(0),
       velN: packet.payload.readInt32LE(4), // [cm/s]
@@ -312,7 +329,7 @@ function sat(packet) {
   return {
     type: 'NAV-SAT',
     iTOW: packet.payload.readUInt32LE(0),
-    timeStamp: iTowToDate(packet.payload.readUInt32LE(0)),
+    timeStamp: itowToDate(packet.payload.readUInt32LE(0)),
     data: {
       iTOW: packet.payload.readUInt32LE(0),
       version: packet.payload.readUInt8(4),
@@ -322,30 +339,47 @@ function sat(packet) {
   };
 }
 
+/*
+This message combines position, velocity and time solution, including accuracy
+figures.
+Note that during a leap second there may be more or less than 60 seconds in a
+minute. See the section Leap seconds in Integration manual for details.
+*/
 function pvt(packet) {
-  const gpsFix = {
-    raw: packet.payload.readUInt8(20),
+  const gpsFixRaw = {
+    value: packet.payload.readUInt8(20),
     string: '',
   };
 
-  switch (gpsFix.raw) {
+  let gpsFix = '';
+  switch (gpsFixRaw.value) {
     case 0x00:
-      gpsFix.string = 'no fix';
+      gpsFixRaw.string = 'no fix';
+      gpsFix = 'no-fix';
       break;
     case 0x01:
-      gpsFix.string = 'dead reckoning only';
+      gpsFixRaw.string = 'dead reckoning only';
+      gpsFix = 'dead-reckoning';
       break;
     case 0x02:
-      gpsFix.string = '2D-fix';
+      gpsFixRaw.string = '2D-fix';
+      gpsFix = '2d-fix';
       break;
     case 0x03:
-      gpsFix.string = '3D-fix';
+      gpsFixRaw.string = '3D-fix';
+      gpsFix = '3d-fix';
       break;
     case 0x04:
-      gpsFix.string = 'GNSS + dead reckoning combined';
+      gpsFixRaw.string = 'GPS + dead reckoning combined';
+      gpsFix = 'gps+dead-reckoning';
       break;
     case 0x05:
-      gpsFix.string = 'Time only fix';
+      gpsFixRaw.string = 'Time only fix';
+      gpsFix = 'time-only';
+      break;
+    default:
+      gpsFixRaw.string = 'reserved';
+      gpsFix = 'reserved';
       break;
   }
 
@@ -357,24 +391,29 @@ function pvt(packet) {
       string: `${(packet.payload.readUInt8(21) >> 4) % 2}${(packet.payload.readUInt8(21) >> 3) % 2}${(packet.payload.readUInt8(21) >> 2) % 2}`,
     },
     headVehValid: bitToBool(packet.payload.readUInt8(21), 5), // heading of vehicle is valid
-    carrSoln: { // Carrier phase range solution status
-      raw: 0,
-      string: `${(packet.payload.readUInt8(21) >> 7) % 2}${(packet.payload.readUInt8(21) >> 6) % 2}`,
+    carrSolnRaw: { // Carrier phase range solution status
+      bits: `${(packet.payload.readUInt8(21) >> 7) % 2}${(packet.payload.readUInt8(21) >> 6) % 2}`,
     },
+    // flags2
+    confirmedAvai: bitToBool(packet.payload.readUInt8(22), 5), // information about UTC Date and Time of Day validity confirmation is available
+    confirmedDate: bitToBool(packet.payload.readUInt8(22), 6), // UTC Date validity could be confirmed
+    confirmedTime: bitToBool(packet.payload.readUInt8(22), 7), // UTC Time of Day could be confirmed
+    // flags3
+    invalidLlh: bitToBool(packet.payload.readUInt8(78), 0), //  Invalid lon, lat, height and hMSL
   };
 
-  switch (flags.carrSoln.string) {
+  switch (flags.carrSolnRaw.bits) {
     case '00':
-      flags.carrSoln.raw = 0;
-      flags.carrSoln.string = 'no carrier phase range solution';
+      flags.carrSoln = 'none';
+      flags.carrSolnRaw.string = 'no carrier phase range solution';
       break;
     case '01':
-      flags.carrSoln.raw = 1;
-      flags.carrSoln.string = 'carrier phase range solution with floating ambiguities';
+      flags.carrSoln = 'float';
+      flags.carrSolnRaw.string = 'carrier phase range solution with floating ambiguities';
       break;
     case '10':
-      flags.carrSoln.raw = 2;
-      flags.carrSoln.string = 'carrier phase range solution with fixed ambiguities';
+      flags.carrSoln = 'fix';
+      flags.carrSolnRaw.string = 'carrier phase range solution with fixed ambiguities';
       break;
   }
 
@@ -385,20 +424,10 @@ function pvt(packet) {
     validMag: bitToBool(packet.payload.readUInt8(11), 3), // valid Magnetic declination
   };
 
-  const flags2 = {
-    confirmedAvai: bitToBool(packet.payload.readUInt8(22), 5), // information about UTC Date and Time of Day validity confirmation is available
-    confirmedDate: bitToBool(packet.payload.readUInt8(22), 6), // UTC Date validity could be confirmed
-    confirmedTime: bitToBool(packet.payload.readUInt8(22), 7), // UTC Time of Day could be confirmed
-  };
-
-  const flags3 = {
-    invalidLlh: bitToBool(packet.payload.readUInt8(78), 0), //  Invalid lon, lat, height and hMSL
-  };
-
   return {
     type: 'NAV-PVT',
     iTOW: packet.payload.readUInt32LE(0),
-    timeStamp: iTowToDate(packet.payload.readUInt32LE(0)),
+    timeStamp: itowToDate(packet.payload.readUInt32LE(0)),
     data: {
       iTOW: packet.payload.readUInt32LE(0),
       year: packet.payload.readUInt16LE(4), // Year (UTC) [y]
@@ -407,28 +436,27 @@ function pvt(packet) {
       hour: packet.payload.readUInt8(8), // Hour of day, range 0..23 (UTC) [h]
       minute: packet.payload.readUInt8(9), // Minute of hour, range 0..59 (UTC) [min]
       second: packet.payload.readUInt8(10), // Seconds of minute, range 0..60 (UTC) [s]
-      valid,
+      valid, // Validity flags
       tAcc: packet.payload.readUInt32LE(12), // Time accuracy estimate (UTC) [ns]
       nano: packet.payload.readInt32LE(16), // Fraction of second, range -1e9 .. 1e9 (UTC) [ns]
       fixType: gpsFix,
+      fixTypeRaw: gpsFixRaw,
       flags,
-      flags2,
       numSV: packet.payload.readUInt8(23), // Number of satellites used in Nav Solution
       lon: (packet.payload.readInt32LE(24) * 1e-7), // [deg]
       lat: (packet.payload.readInt32LE(28) * 1e-7), // [deg]
-      height: packet.payload.readInt32LE(32), // [mm]
-      hMSL: packet.payload.readInt32LE(36), // [mm]
+      height: packet.payload.readInt32LE(32), // Height above ellipsoid [mm]
+      hMSL: packet.payload.readInt32LE(36), // Height above mean sea level [mm]
       hAcc: packet.payload.readUInt32LE(40), // [mm]
       vAcc: packet.payload.readUInt32LE(44), // [mm]
       velN: packet.payload.readInt32LE(48), // [mm/s]
       velE: packet.payload.readInt32LE(52), // [mm/s]
       velD: packet.payload.readInt32LE(56), // [mm/s]
-      gSpeed: packet.payload.readInt32LE(60), // [mm/s]
-      headMot: (packet.payload.readInt32LE(64) * 1e-5), // [deg]
-      sAcc: packet.payload.readUInt32LE(68), // [mm/s]
-      headAcc: (packet.payload.readUInt32LE(72) * 1e-5), // [deg]
+      gSpeed: packet.payload.readInt32LE(60), // Ground Speed (2-D) [mm/s]
+      headMot: (packet.payload.readInt32LE(64) * 1e-5), // Heading of motion (2-D) [deg]
+      sAcc: packet.payload.readUInt32LE(68), // Speed accuracy estimate [mm/s]
+      headAcc: (packet.payload.readUInt32LE(72) * 1e-5), // Heading accuracy estimate (both motion and vehicle) [deg]
       pDOP: packet.payload.readUInt16LE(76), // Position DOP
-      flags3,
       headVeh: (packet.payload.readInt32LE(84) * 1e-5), // Heading of vehicle (2-D) [deg]
       magDec: (packet.payload.readInt16LE(88) * 1e-2), // Magnetic declination [deg]
       magAcc: (packet.payload.readInt16LE(90) * 1e-2), // Magnetic declination accuracy[deg]
@@ -436,6 +464,11 @@ function pvt(packet) {
   };
 }
 
+/*
+This message outputs the Geodetic position in the currently selected ellipsoid.
+The default is the WGS84 Ellipsoid, but can be changed with the message
+CFG-NAVSPG-USE_USRDAT.
+*/
 /**
  * @param {protocolMessage} packet
  */
@@ -447,7 +480,7 @@ function hpposllh(packet) {
   return {
     type: 'NAV-HPPOSLLH',
     iTOW: packet.payload.readUInt32LE(4),
-    timeStamp: iTowToDate(packet.payload.readUInt32LE(0)),
+    timeStamp: itowToDate(packet.payload.readUInt32LE(4)),
     data: {
       flags,
       iTOW: packet.payload.readUInt32LE(4),
@@ -461,41 +494,48 @@ function hpposllh(packet) {
   };
 }
 
+/*
+The NED frame is defined as the local topological system at the reference
+station. The relative position vector components in this message, along with
+their associated accuracies, are given in that local topological system
+This message contains the relative position vector from the Reference Station
+to the Rover, including accuracy figures, in the local topological system defined
+at the reference station
+*/
 function relposned(packet) {
   const flags = {
     gnssFixOK: bitToBool(packet.payload.readUInt8(60), 0), // A valid fix (i.e within DOP & accuracy masks)
     diffSoln: bitToBool(packet.payload.readUInt8(60), 1), // 1 if differential corrections were applied
     relPosValid: bitToBool(packet.payload.readUInt8(60), 2), // 1 if relative position components and accuracies are valid and, in moving base mode only, if baseline is valid
-    carrSoln: { // Carrier phase range solution status
-      raw: 0,
-      string: `${(packet.payload.readUInt8(60) >> 4) % 2}${(packet.payload.readUInt8(60) >> 3) % 2}`,
+    carrSolnRaw: { // Carrier phase range solution status
+      bits: `${(packet.payload.readUInt8(60) >> 4) % 2}${(packet.payload.readUInt8(60) >> 3) % 2}`,
     },
     isMoving: bitToBool(packet.payload.readUInt8(60), 5), // 1 if the receiver is operating in moving base mode
     refPosMiss: bitToBool(packet.payload.readUInt8(60), 6), // 1 if extrapolated reference position was used to compute moving base solution this epoch
     refObsMiss: bitToBool(packet.payload.readUInt8(60), 7), // 1 if extrapolated reference observations were used to compute moving base solution this epoch
-    relPosHeadingValid: bitToBool(packet.payload.readUInt8(60), 8), // 1 if relPosHeading is valid
-    relPosNormalized: bitToBool(packet.payload.readUInt8(61), 0), // 1 if the components of the relative position vector (including the high-precision parts) are normalized
+    relPosHeadingValid: bitToBool(packet.payload.readUInt8(61), 0), // 1 if relPosHeading is valid
+    relPosNormalized: bitToBool(packet.payload.readUInt8(61), 1), // 1 if the components of the relative position vector (including the high-precision parts) are normalized
   };
 
-  switch (flags.carrSoln.string) {
+  switch (flags.carrSolnRaw.bits) {
     case '00':
-      flags.carrSoln.raw = 0;
-      flags.carrSoln.string = 'no carrier phase range solution';
+      flags.carrSoln = 'none';
+      flags.carrSolnRaw.string = 'no carrier phase range solution';
       break;
     case '01':
-      flags.carrSoln.raw = 1;
-      flags.carrSoln.string = 'carrier phase range solution with floating ambiguities';
+      flags.carrSoln = 'float';
+      flags.carrSolnRaw.string = 'carrier phase range solution with floating ambiguities';
       break;
     case '10':
-      flags.carrSoln.raw = 2;
-      flags.carrSoln.string = 'carrier phase range solution with fixed ambiguities';
+      flags.carrSoln = 'fix';
+      flags.carrSolnRaw.string = 'carrier phase range solution with fixed ambiguities';
       break;
   }
 
   return {
     type: 'NAV-RELPOSNED',
     iTOW: packet.payload.readUInt32LE(4),
-    timeStamp: iTowToDate(packet.payload.readUInt32LE(0)),
+    timeStamp: itowToDate(packet.payload.readUInt32LE(4)),
     data: {
       refStationId: packet.payload.readUInt16LE(2), // Reference Station ID. Must be in the range 0..4095
       iTOW: packet.payload.readUInt32LE(4),
@@ -514,6 +554,25 @@ function relposned(packet) {
   };
 }
 
+/*
+This message is intended to be used as a marker to collect all navigation
+messages of an epoch. It is output after all enabled NAV class messages (except
+UBX-NAV-HNR) and after all enabled NMEA messages.
+*/
+/**
+ * @param {protocolMessage} packet
+ */
+function eoe(packet) {
+  return {
+    type: 'NAV-EOE',
+    iTOW: packet.payload.readUInt32LE(0),
+    timeStamp: itowToDate(packet.payload.readUInt32LE(0)),
+    data: {
+      iTOW: packet.payload.readUInt32LE(0),
+    },
+  };
+}
+
 export default {
   status,
   posllh,
@@ -522,4 +581,6 @@ export default {
   pvt,
   hpposllh,
   relposned,
+  eoe,
+  itowDiff,
 };

@@ -59,6 +59,10 @@ export default class UBXPacketParser extends Transform {
         result = navFunctions.relposned(chunk);
         break;
 
+      case packetTypes['NAV-EOE']:
+        result = navFunctions.eoe(chunk);
+        break;
+
       default:
         debug(`Unknown packet type: "${packetTypeString}" "${packetType}"`);
         // emit an event about the unhandled packet
@@ -77,5 +81,9 @@ export default class UBXPacketParser extends Transform {
     const packetType = `${packetClass}_${packetId}`;
     const packetTypeString = packetTypesInversed[packetType];
     return packetTypeString || 'UNKNOWN';
+  }
+
+  static itowDiff(itowStart, itowEnd) {
+    return navFunctions.itowDiff(itowStart, itowEnd);
   }
 }
