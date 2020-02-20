@@ -159,8 +159,8 @@ function posllh(packet) {
     timeStamp: itowToDate(packet.payload.readUInt32LE(0)),
     data: {
       iTOW: packet.payload.readUInt32LE(0),
-      lon: (packet.payload.readInt32LE(4) * 1e-7), // [deg]
-      lat: (packet.payload.readInt32LE(8) * 1e-7), // [deg]
+      lon: (packet.payload.readInt32LE(4) / 1e7), // [deg]
+      lat: (packet.payload.readInt32LE(8) / 1e7), // [deg]
       height: packet.payload.readInt32LE(12), // [mm]
       hMSL: packet.payload.readInt32LE(16), // [mm]
       hAcc: packet.payload.readUInt32LE(20), // [mm]
@@ -184,9 +184,9 @@ function velned(packet) {
       velD: packet.payload.readInt32LE(12), // [cm/s]
       speed: packet.payload.readUInt32LE(16), // [cm/s]
       gSpeed: packet.payload.readUInt32LE(20), // [cm/s]
-      heading: (packet.payload.readInt32LE(24) * 1e-5), // [deg]
+      heading: (packet.payload.readInt32LE(24) / 1e5), // [deg]
       sAcc: packet.payload.readUInt32LE(28), // [cm/s]
-      cAcc: (packet.payload.readInt32LE(32) * 1e-5), // [deg]
+      cAcc: (packet.payload.readInt32LE(32) / 1e5), // [deg]
     },
   };
 }
@@ -321,7 +321,7 @@ function sat(packet) {
       cno: packet.payload.readUInt8(10 + (12 * i)), // Carrier to noise ratio (signal strength) [dBHz]
       elev: packet.payload.readInt8(11 + (12 * i)), // Elevation (range: +/-90), unknown if out of range [deg]
       azim: packet.payload.readInt16LE(12 + (12 * i)), // Azimuth (range 0-360), unknown if elevation is out of range [deg]
-      prRes: (packet.payload.readInt16LE(14 + (12 * i)) * 0.1), // Pseudorange residual [m]
+      prRes: (packet.payload.readInt16LE(14 + (12 * i)) / 1e1), // Pseudorange residual [m]
       flags,
     });
   }
@@ -443,8 +443,8 @@ function pvt(packet) {
       fixTypeRaw: gpsFixRaw,
       flags,
       numSV: packet.payload.readUInt8(23), // Number of satellites used in Nav Solution
-      lon: (packet.payload.readInt32LE(24) * 1e-7), // [deg]
-      lat: (packet.payload.readInt32LE(28) * 1e-7), // [deg]
+      lon: (packet.payload.readInt32LE(24) / 1e7), // [deg]
+      lat: (packet.payload.readInt32LE(28) / 1e7), // [deg]
       height: packet.payload.readInt32LE(32), // Height above ellipsoid [mm]
       hMSL: packet.payload.readInt32LE(36), // Height above mean sea level [mm]
       hAcc: packet.payload.readUInt32LE(40), // [mm]
@@ -453,13 +453,13 @@ function pvt(packet) {
       velE: packet.payload.readInt32LE(52), // [mm/s]
       velD: packet.payload.readInt32LE(56), // [mm/s]
       gSpeed: packet.payload.readInt32LE(60), // Ground Speed (2-D) [mm/s]
-      headMot: (packet.payload.readInt32LE(64) * 1e-5), // Heading of motion (2-D) [deg]
+      headMot: (packet.payload.readInt32LE(64) / 1e5), // Heading of motion (2-D) [deg]
       sAcc: packet.payload.readUInt32LE(68), // Speed accuracy estimate [mm/s]
-      headAcc: (packet.payload.readUInt32LE(72) * 1e-5), // Heading accuracy estimate (both motion and vehicle) [deg]
+      headAcc: (packet.payload.readUInt32LE(72) / 1e5), // Heading accuracy estimate (both motion and vehicle) [deg]
       pDOP: packet.payload.readUInt16LE(76), // Position DOP
-      headVeh: (packet.payload.readInt32LE(84) * 1e-5), // Heading of vehicle (2-D) [deg]
-      magDec: (packet.payload.readInt16LE(88) * 1e-2), // Magnetic declination [deg]
-      magAcc: (packet.payload.readInt16LE(90) * 1e-2), // Magnetic declination accuracy[deg]
+      headVeh: (packet.payload.readInt32LE(84) / 1e5), // Heading of vehicle (2-D) [deg]
+      magDec: (packet.payload.readInt16LE(88) / 1e2), // Magnetic declination [deg]
+      magAcc: (packet.payload.readInt16LE(90) / 1e2), // Magnetic declination accuracy[deg]
     },
   };
 }
@@ -484,12 +484,12 @@ function hpposllh(packet) {
     data: {
       flags,
       iTOW: packet.payload.readUInt32LE(4),
-      lon: (packet.payload.readInt32LE(8) * 1e-7 + packet.payload.readInt8(24) * 1e-9), // [deg]
-      lat: (packet.payload.readInt32LE(12) * 1e-7 + packet.payload.readInt8(25) * 1e-9), // [deg]
-      height: (packet.payload.readInt32LE(16) + packet.payload.readInt8(26) * 0.1), // [mm]
-      hMSL: (packet.payload.readInt32LE(20) + packet.payload.readInt8(27) * 0.1), // [mm]
-      hAcc: (packet.payload.readUInt32LE(28) * 0.1), // [mm]
-      vAcc: (packet.payload.readUInt32LE(32) * 0.1), // [mm]
+      lon: ((packet.payload.readInt32LE(8) * 1e2 + packet.payload.readInt8(24)) / 1e9), // [deg]
+      lat: ((packet.payload.readInt32LE(12) * 1e2 + packet.payload.readInt8(25)) / 1e9), // [deg]
+      height: (packet.payload.readInt32LE(16) + packet.payload.readInt8(26) / 1e1), // [mm]
+      hMSL: (packet.payload.readInt32LE(20) + packet.payload.readInt8(27) / 1e1), // [mm]
+      hAcc: (packet.payload.readUInt32LE(28) / 1e1), // [mm]
+      vAcc: (packet.payload.readUInt32LE(32) / 1e1), // [mm]
     },
   };
 }
@@ -539,16 +539,16 @@ function relposned(packet) {
     data: {
       refStationId: packet.payload.readUInt16LE(2), // Reference Station ID. Must be in the range 0..4095
       iTOW: packet.payload.readUInt32LE(4),
-      relPosN: (packet.payload.readInt32LE(8) * 10 + packet.payload.readInt8(32) * 0.1), // [mm]
-      relPosE: (packet.payload.readInt32LE(12) * 10 + packet.payload.readInt8(33) * 0.1), // [mm]
-      relPosD: (packet.payload.readInt32LE(16) * 10 + packet.payload.readInt8(34) * 0.1), // [mm]
-      relPosLength: (packet.payload.readInt32LE(20) * 10 + packet.payload.readInt8(35) * 0.1), // [mm]
-      relPosHeading: (packet.payload.readInt32LE(24) * 1e-5), // [deg]
-      accN: (packet.payload.readUInt32LE(36) * 0.1), // Accuracy of relative position North component [mm]
-      accE: (packet.payload.readUInt32LE(40) * 0.1), // Accuracy of relative position East component [mm]
-      accD: (packet.payload.readUInt32LE(44) * 0.1), // Accuracy of relative position Down component [mm]
-      accLength: (packet.payload.readUInt32LE(48) * 0.1), // Accuracy of length of the relative position vector [mm]
-      accHeading: (packet.payload.readUInt32LE(52) * 1e-5), // [deg]
+      relPosN: (packet.payload.readInt32LE(8) * 10 + packet.payload.readInt8(32) / 1e1), // [mm]
+      relPosE: (packet.payload.readInt32LE(12) * 10 + packet.payload.readInt8(33) / 1e1), // [mm]
+      relPosD: (packet.payload.readInt32LE(16) * 10 + packet.payload.readInt8(34) / 1e1), // [mm]
+      relPosLength: (packet.payload.readInt32LE(20) * 10 + packet.payload.readInt8(35) / 1e1), // [mm]
+      relPosHeading: (packet.payload.readInt32LE(24) / 1e5), // [deg]
+      accN: (packet.payload.readUInt32LE(36) / 1e1), // Accuracy of relative position North component [mm]
+      accE: (packet.payload.readUInt32LE(40) / 1e1), // Accuracy of relative position East component [mm]
+      accD: (packet.payload.readUInt32LE(44) / 1e1), // Accuracy of relative position Down component [mm]
+      accLength: (packet.payload.readUInt32LE(48) / 1e1), // Accuracy of length of the relative position vector [mm]
+      accHeading: (packet.payload.readUInt32LE(52) / 1e5), // [deg]
       flags,
     },
   };
