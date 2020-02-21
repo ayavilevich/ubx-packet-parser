@@ -3,6 +3,7 @@ import Debug from 'debug';
 import { Transform } from 'stream';
 import { packetTypes, packetTypesInversed } from './ubx';
 import navFunctions from './nav';
+import monFunctions from './mon';
 
 const debug = Debug('ubx:packet:parser');
 
@@ -61,6 +62,10 @@ export default class UBXPacketParser extends Transform {
 
       case packetTypes['NAV-EOE']:
         result = navFunctions.eoe(chunk);
+        break;
+
+      case packetTypes['MON-VER']:
+        result = monFunctions.ver(chunk);
         break;
 
       default:
