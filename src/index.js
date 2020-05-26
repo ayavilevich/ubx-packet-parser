@@ -68,6 +68,10 @@ export default class UBXPacketParser extends Transform {
         result = monFunctions.ver(chunk);
         break;
 
+      case packetTypes['MON-RF']:
+        result = monFunctions.rf(chunk);
+        break;
+
       default:
         debug(`Unknown packet type: "${packetTypeString}" "${packetType}"`);
         // emit an event about the unhandled packet
