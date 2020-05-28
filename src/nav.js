@@ -1,5 +1,5 @@
 /* eslint-disable no-bitwise,default-case */
-import { gnssIdentifiersInversed } from './ubx';
+import { gnssIdentifiersInversed, gnssSignalIdentifiersInversed } from './ubx';
 
 /**
  * @typedef {object} protocolMessage
@@ -200,20 +200,17 @@ function sat(packet) {
 
   for (let i = 0; i < satCount; i += 1) {
     const flags = {
-      qualityInd: {
-        raw: 0,
-        string: `${(packet.payload.readUInt8(16 + (12 * i)) >> 2) % 2}${(packet.payload.readUInt8(16 + (12 * i)) >> 1) % 2}${(packet.payload.readUInt8(16 + (12 * i)) >> 0) % 2}`,
+      qualityIndRaw: { // Signal quality indicator:
+        bits: `${(packet.payload.readUInt8(16 + (12 * i)) >> 2) % 2}${(packet.payload.readUInt8(16 + (12 * i)) >> 1) % 2}${(packet.payload.readUInt8(16 + (12 * i)) >> 0) % 2}`,
       },
       svUsed: bitToBool(packet.payload.readUInt8(16 + (12 * i)), 3), // Signal in the subset specified in Signal Identifiers is currently being used for navigation
-      health: {
-        raw: 0,
-        string: `${(packet.payload.readUInt8(16 + (12 * i)) >> 5) % 2}${(packet.payload.readUInt8(16 + (12 * i)) >> 4) % 2}`,
+      healthRaw: { // Signal health flag
+        bits: `${(packet.payload.readUInt8(16 + (12 * i)) >> 5) % 2}${(packet.payload.readUInt8(16 + (12 * i)) >> 4) % 2}`,
       },
       diffCorr: bitToBool(packet.payload.readUInt8(16 + (12 * i)), 6), // differential correction data is available for this SV
       smoothed: bitToBool(packet.payload.readUInt8(16 + (12 * i)), 7), // carrier smoothed pseudorange used
-      orbitSource: {
-        raw: 0,
-        string: `${(packet.payload.readUInt8(17 + (12 * i)) >> 2) % 2}${(packet.payload.readUInt8(17 + (12 * i)) >> 1) % 2}${(packet.payload.readUInt8(17 + (12 * i)) >> 0) % 2}`,
+      orbitSourceRaw: { // Orbit source
+        bits: `${(packet.payload.readUInt8(17 + (12 * i)) >> 2) % 2}${(packet.payload.readUInt8(17 + (12 * i)) >> 1) % 2}${(packet.payload.readUInt8(17 + (12 * i)) >> 0) % 2}`,
       },
       ephAvail: bitToBool(packet.payload.readUInt8(17 + (12 * i)), 3), // ephemeris is available for this SV
       almAvail: bitToBool(packet.payload.readUInt8(17 + (12 * i)), 4), // almanac is available for this SV
@@ -227,96 +224,115 @@ function sat(packet) {
       doCorrUsed: bitToBool(packet.payload.readUInt8(18 + (12 * i)), 6), // Range rate (Doppler) corrections have been used for a signal...
     };
 
-    switch (flags.qualityInd.string) {
+    switch (flags.qualityIndRaw.bits) {
       case '000':
-        flags.qualityInd.raw = 0;
-        flags.qualityInd.string = 'no signal';
+        flags.qualityIndRaw.raw = 0;
+        flags.qualityIndRaw.string = 'no signal';
+        flags.qualityInd = 'no-signal';
         break;
       case '001':
-        flags.qualityInd.raw = 1;
-        flags.qualityInd.string = 'searching signal';
+        flags.qualityIndRaw.raw = 1;
+        flags.qualityIndRaw.string = 'searching signal';
+        flags.qualityInd = 'searching-signal';
         break;
       case '010':
-        flags.qualityInd.raw = 2;
-        flags.qualityInd.string = 'signal acquired';
+        flags.qualityIndRaw.raw = 2;
+        flags.qualityIndRaw.string = 'signal acquired';
+        flags.qualityInd = 'signal-acquired';
         break;
       case '011':
-        flags.qualityInd.raw = 3;
-        flags.qualityInd.string = 'signal detected but unusable';
+        flags.qualityIndRaw.raw = 3;
+        flags.qualityIndRaw.string = 'signal detected but unusable';
+        flags.qualityInd = 'signal-detected';
         break;
       case '100':
-        flags.qualityInd.raw = 4;
-        flags.qualityInd.string = 'code locked and time synchronized';
+        flags.qualityIndRaw.raw = 4;
+        flags.qualityIndRaw.string = 'code locked and time synchronized';
+        flags.qualityInd = 'code-locked';
         break;
       case '101':
-        flags.qualityInd.raw = 5;
-        flags.qualityInd.string = 'code and carrier locked and time synchronized';
+        flags.qualityIndRaw.raw = 5;
+        flags.qualityIndRaw.string = 'code and carrier locked and time synchronized';
+        flags.qualityInd = 'code-carrier-locked';
         break;
       case '110':
-        flags.qualityInd.raw = 6;
-        flags.qualityInd.string = 'code and carrier locked and time synchronized';
+        flags.qualityIndRaw.raw = 6;
+        flags.qualityIndRaw.string = 'code and carrier locked and time synchronized';
+        flags.qualityInd = 'code-carrier-locked';
         break;
       case '111':
-        flags.qualityInd.raw = 7;
-        flags.qualityInd.string = 'code and carrier locked and time synchronized';
+        flags.qualityIndRaw.raw = 7;
+        flags.qualityIndRaw.string = 'code and carrier locked and time synchronized';
+        flags.qualityInd = 'code-carrier-locked';
         break;
     }
 
-    switch (flags.health.string) {
+    switch (flags.healthRaw.bits) {
       case '00':
-        flags.health.raw = 0;
-        flags.health.string = 'unknown';
+        flags.healthRaw.raw = 0;
+        flags.healthRaw.string = 'unknown';
         break;
       case '01':
-        flags.health.raw = 1;
-        flags.health.string = 'healthy';
+        flags.healthRaw.raw = 1;
+        flags.healthRaw.string = 'healthy';
         break;
       case '10':
-        flags.health.raw = 2;
-        flags.health.string = 'unhealthy';
+        flags.healthRaw.raw = 2;
+        flags.healthRaw.string = 'unhealthy';
         break;
     }
+    flags.health = flags.healthRaw.string; // all values fit convention
 
-    switch (flags.orbitSource.string) {
+    switch (flags.orbitSourceRaw.bits) {
       case '000':
-        flags.orbitSource.raw = 0;
-        flags.orbitSource.string = 'no orbit information is available for this SV';
+        flags.orbitSourceRaw.raw = 0;
+        flags.orbitSourceRaw.string = 'no orbit information is available for this SV';
+        flags.orbitSource = 'no-info';
         break;
       case '001':
-        flags.orbitSource.raw = 1;
-        flags.orbitSource.string = 'ephemeris is used';
+        flags.orbitSourceRaw.raw = 1;
+        flags.orbitSourceRaw.string = 'ephemeris is used';
+        flags.orbitSource = 'ephemeris';
         break;
       case '010':
-        flags.orbitSource.raw = 2;
-        flags.orbitSource.string = 'almanac is used';
+        flags.orbitSourceRaw.raw = 2;
+        flags.orbitSourceRaw.string = 'almanac is used';
+        flags.orbitSource = 'almanac';
         break;
       case '011':
-        flags.orbitSource.raw = 3;
-        flags.orbitSource.string = 'AssistNow Offline orbit is used';
+        flags.orbitSourceRaw.raw = 3;
+        flags.orbitSourceRaw.string = 'AssistNow Offline orbit is used';
+        flags.orbitSource = 'assistnow-offline';
         break;
       case '100':
-        flags.orbitSource.raw = 4;
-        flags.orbitSource.string = 'AssistNow Autonomous orbit is used';
+        flags.orbitSourceRaw.raw = 4;
+        flags.orbitSourceRaw.string = 'AssistNow Autonomous orbit is used';
+        flags.orbitSource = 'assistnow-autonomous';
         break;
       case '101':
-        flags.orbitSource.raw = 5;
-        flags.orbitSource.string = 'other orbit information is used';
+        flags.orbitSourceRaw.raw = 5;
+        flags.orbitSourceRaw.string = 'other orbit information is used';
+        flags.orbitSource = 'other';
         break;
       case '110':
-        flags.orbitSource.raw = 6;
-        flags.orbitSource.string = 'other orbit information is used';
+        flags.orbitSourceRaw.raw = 6;
+        flags.orbitSourceRaw.string = 'other orbit information is used';
+        flags.orbitSource = 'other';
         break;
       case '111':
-        flags.orbitSource.raw = 7;
-        flags.orbitSource.string = 'other orbit information is used';
+        flags.orbitSourceRaw.raw = 7;
+        flags.orbitSourceRaw.string = 'other orbit information is used';
+        flags.orbitSource = 'other';
         break;
     }
 
+    const gnssId = packet.payload.readUInt8(8 + (12 * i));
     sats.push({
-      gnss: {
-        raw: packet.payload.readUInt8(8 + (12 * i)), // GNSS identifier
-        string: gnssIdentifiersInversed[packet.payload.readUInt8(8 + (12 * i))],
+      gnssRaw: {
+        raw: gnssId, // GNSS identifier
+        string: gnssIdentifiersInversed[gnssId],
       },
+      gnss: gnssIdentifiersInversed[gnssId],
       svId: packet.payload.readUInt8(9 + (12 * i)), // Satellite identifier
       cno: packet.payload.readUInt8(10 + (12 * i)), // Carrier to noise ratio (signal strength) [dBHz]
       elev: packet.payload.readInt8(11 + (12 * i)), // Elevation (range: +/-90), unknown if out of range [deg]
@@ -335,6 +351,132 @@ function sat(packet) {
       version: packet.payload.readUInt8(4),
       numSvs: packet.payload.readUInt8(5),
       sats,
+    },
+  };
+}
+
+function sig(packet) {
+  const sigCount = packet.payload.readUInt8(5); // Number of satellites
+  const sigs = [];
+
+  for (let i = 0; i < sigCount; i += 1) {
+    const flagsLowByte = packet.payload.readUInt8(18 + (16 * i));
+    const flags = {
+      healthRaw: { // Signal health flag
+        bits: `${(flagsLowByte >> 1) % 2}${(flagsLowByte >> 0) % 2}`,
+      },
+      prSmoothed: bitToBool(flagsLowByte, 2), // Pseudorange has been smoothed
+      prUsed: bitToBool(flagsLowByte, 3), // Pseudorange has been used for a signal...
+      crUsed: bitToBool(flagsLowByte, 4), // Carrier range has been used for a signal...
+      doUsed: bitToBool(flagsLowByte, 5), // Range rate (Doppler) has been used for a signal...
+      prCorrUsed: bitToBool(flagsLowByte, 6), // Pseudorange corrections have been used for a signal...
+      crCorrUsed: bitToBool(flagsLowByte, 7), // Carrier range corrections have been used for a signal...
+      doCorrUsed: bitToBool(packet.payload.readUInt8(19 + (16 * i)), 0), // Range rate (Doppler) corrections have been used for a signal...
+    };
+
+    switch (flags.healthRaw.bits) {
+      case '00':
+        flags.healthRaw.raw = 0;
+        flags.healthRaw.string = 'unknown';
+        break;
+      case '01':
+        flags.healthRaw.raw = 1;
+        flags.healthRaw.string = 'healthy';
+        break;
+      case '10':
+        flags.healthRaw.raw = 2;
+        flags.healthRaw.string = 'unhealthy';
+        break;
+    }
+    flags.health = flags.healthRaw.string; // all values fit convention
+
+    // enums that are not a flag
+    const qualityIndRaw = { raw: packet.payload.readUInt8(15 + (16 * i)) }; // Signal quality indicator.
+    let qualityInd = false;
+
+    switch (qualityIndRaw.raw) {
+      case 0:
+        qualityIndRaw.string = 'no signal';
+        qualityInd = 'no-signal';
+        break;
+      case 1:
+        qualityIndRaw.string = 'searching signal';
+        qualityInd = 'searching-signal';
+        break;
+      case 2:
+        qualityIndRaw.string = 'signal acquired';
+        qualityInd = 'signal-acquired';
+        break;
+      case 3:
+        qualityIndRaw.string = 'signal detected but unusable';
+        qualityInd = 'signal-detected';
+        break;
+      case 4:
+        qualityIndRaw.string = 'code locked and time synchronized';
+        qualityInd = 'code-locked';
+        break;
+      case 5:
+      case 6:
+      case 7:
+        qualityIndRaw.string = 'code and carrier locked and time synchronized';
+        qualityInd = 'code-carrier-locked';
+        break;
+    }
+
+    const ionoModelRaw = { raw: packet.payload.readUInt8(17 + (16 * i)) }; // Ionospheric model used
+    let ionoModel = false;
+
+    switch (ionoModelRaw.raw) {
+      case 0:
+        ionoModelRaw.string = 'No model';
+        ionoModel = 'no-model';
+        break;
+      case 1:
+        ionoModelRaw.string = 'Klobuchar model transmitted by GPS';
+        ionoModel = 'klobuchar-gps';
+        break;
+      case 2:
+        ionoModelRaw.string = 'SBAS model';
+        ionoModel = 'sbas';
+        break;
+      case 3:
+        ionoModelRaw.string = 'Klobuchar model transmitted by BeiDou';
+        ionoModel = 'klobuchar-beidou';
+        break;
+      case 8:
+        ionoModelRaw.string = 'Iono delay derived from dual frequency observations';
+        ionoModel = 'dual-frequency';
+        break;
+    }
+
+    const gnssId = packet.payload.readUInt8(8 + (16 * i)); // GNSS identifier
+    const sigId = packet.payload.readUInt8(10 + (16 * i)); // New style signal identifier
+    sigs.push({
+      gnssId, // GNSS identifier
+      gnss: gnssIdentifiersInversed[gnssId],
+      svId: packet.payload.readUInt8(9 + (16 * i)), // Satellite identifier
+      sigId, // New style signal identifier
+      sig: gnssSignalIdentifiersInversed[gnssId] ? gnssSignalIdentifiersInversed[gnssId][sigId] : false,
+      freqId: packet.payload.readUInt8(11 + (16 * i)), // Only used for GLONASS: This is the frequency slot + 7 (range from 0 to 13)
+      prRes: (packet.payload.readInt16LE(12 + (16 * i)) / 1e1), // Pseudorange residual [m]
+      cno: packet.payload.readUInt8(14 + (16 * i)), // Carrier to noise ratio (signal strength) [dBHz]
+      qualityInd, // Signal quality indicator.
+      qualityIndRaw,
+      ionoModel, // Ionospheric model used
+      ionoModelRaw,
+      flags,
+    });
+  }
+
+  return {
+    type: 'NAV-SIG',
+    iTOW: packet.payload.readUInt32LE(0),
+    timeStamp: itowToDate(packet.payload.readUInt32LE(0)),
+    data: {
+      iTOW: packet.payload.readUInt32LE(0),
+      version: packet.payload.readUInt8(4),
+      numSigs: sigCount,
+      sigs,
     },
   };
 }
@@ -578,6 +720,7 @@ export default {
   posllh,
   velned,
   sat,
+  sig,
   pvt,
   hpposllh,
   relposned,

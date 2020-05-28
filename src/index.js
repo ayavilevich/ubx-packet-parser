@@ -48,6 +48,10 @@ export default class UBXPacketParser extends Transform {
         result = navFunctions.sat(chunk);
         break;
 
+      case packetTypes['NAV-SIG']:
+        result = navFunctions.sig(chunk);
+        break;
+
       case packetTypes['NAV-PVT']:
         result = navFunctions.pvt(chunk);
         break;

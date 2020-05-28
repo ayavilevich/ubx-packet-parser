@@ -18,6 +18,35 @@ export const gnssIdentifiersInversed = {
   6: 'GLONASS',
 };
 
+export const gnssSignalIdentifiersInversed = {
+  0: {
+    0: 'L1C/A',
+    3: 'L2 CL',
+    4: 'L2 CM',
+  },
+  2: {
+    0: 'E1 C',
+    1: 'E1 B',
+    5: 'E5 bl',
+    6: 'E5 bQ',
+  },
+  3: {
+    0: 'B1l D1',
+    1: 'B1l D2',
+    2: 'B2l D1',
+    3: 'B2l D2',
+  },
+  5: {
+    0: 'L1C/A',
+    4: 'L2 CM',
+    5: 'L2 CL',
+  },
+  6: {
+    0: 'L1 OF',
+    2: 'L2 OF',
+  },
+};
+
 export const classIdentifiers = {
   NAV: 0x01,
   RXM: 0x02,
@@ -179,6 +208,7 @@ export const packetTypes = {
   'NAV-RELPOSNED': '1_60',
   'NAV-RESETODO': '1_16',
   'NAV-SAT': '1_53',
+  'NAV-SIG': '1_67',
   'NAV-SBAS': '1_50',
   'NAV-SOL': '1_6',
   'NAV-STATUS': '1_3',
@@ -319,6 +349,7 @@ export const packetTypesInversed = {
   '1_60': 'NAV-RELPOSNED',
   '1_16': 'NAV-RESETODO',
   '1_53': 'NAV-SAT',
+  '1_67': 'NAV-SIG',
   '1_50': 'NAV-SBAS',
   '1_6': 'NAV-SOL',
   '1_3': 'NAV-STATUS',
